@@ -1,0 +1,25 @@
+{
+  "name": "academic_backend",
+  "version": "1.0.0",
+  "description": "Simple Express backend with signup/login and super-admin login audit view.",
+  "main": "src/app.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.22.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

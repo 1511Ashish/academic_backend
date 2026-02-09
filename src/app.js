@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const authRoutes = require('./routes/auth');
+const studentRoutes = require('./routes/students');
+const feeRoutes = require('./routes/fees');
 const connectDb = require('./config/db');
 const User = require('./models/User');
 const mongoose = require('mongoose');
@@ -13,6 +15,8 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 app.use('/auth', authRoutes);
+app.use('/students', studentRoutes);
+app.use('/fees', feeRoutes);
 
 app.get('/health', (_req, res) => {
   const status = mongoose.connection?.readyState === 1 ? 'up' : 'down';

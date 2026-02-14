@@ -1,33 +1,22 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
+import { env } from './env.js';
+import { logger } from '../utils/logger.js';
 
-function redact(uri) {
-  try {
-    const parsed = new URL(uri);
-    if (parsed.password) parsed.password = '***';
-    if (parsed.username) parsed.username = '***';
-    return parsed.toString();
-  } catch (_err) {
-    return '<hidden>';
-  }
-}
-
-async function connectDb(uri) {
-  if (!uri) {
-    throw new Error('MONGO_URI is missing in environment variables');
-  }
-
-  const redacted = redact(uri);
-
+export async function connectDb() {
   mongoose.set('strictQuery', true);
 
-  const connection = mongoose.connection;
-  connection.on('connected', () => console.log(`[DB] Connected to MongoDB at ${redacted}`));
-  connection.on('error', (err) => console.error('[DB] MongoDB connection error', err));
-  connection.on('disconnected', () => console.warn('[DB] MongoDB disconnected'));
+  mongoose.connection.on('connected', () => logger.info('MongoDB connection established'));
+  mongoose.connection.on('error', (error) => logger.error('MongoDB connection error', { error: error.message }));
+  mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
 
-  console.log(`[DB] Connecting to MongoDB at ${redacted} ...`);
-  await mongoose.connect(uri, { autoIndex: true });
-  return connection;
+  await mongoose.connect(env.MONGO_URI, {
+    autoIndex: false,
+    maxPoolSize: 20,
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+  });
 }
 
-module.exports = connectDb;
+export async function disconnectDb() {
+  await mongoose.disconnect();
+}

@@ -1,74 +1,54 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const authRoutes = require('./routes/auth');
-const studentRoutes = require('./routes/students');
-const feeRoutes = require('./routes/fees');
-const connectDb = require('./config/db');
-const User = require('./models/User');
-const mongoose = require('mongoose');
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
+import routes from './routes/index.js';
+import { errorMiddleware } from './middleware/error.middleware.js';
+import { logger } from './utils/logger.js';
 
 const app = express();
-const PORT = process.env.PORT || 4000;
 
-app.use(cors());
-app.use(express.json());
-app.use('/auth', authRoutes);
-app.use('/students', studentRoutes);
-app.use('/fees', feeRoutes);
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+app.use(helmet());
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+app.use(
+  morgan('combined', {
+    stream: {
+      write: (message) => logger.info(message.trim()),
+    },
+  })
+);
+
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
 
 app.get('/health', (_req, res) => {
-  const status = mongoose.connection?.readyState === 1 ? 'up' : 'down';
-  res.json({
-    status,
-    dbReadyState: mongoose.connection?.readyState,
-    time: new Date().toISOString(),
-  });
+  res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-async function ensureSuperAdmin() {
-  const email = process.env.SUPERADMIN_EMAIL;
-  const password = process.env.SUPERADMIN_PASSWORD;
-  const name = process.env.SUPERADMIN_NAME || 'Super Admin';
+app.use('/api', routes);
 
-  if (!email || !password) {
-    console.warn('SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD are required to create the super admin user.');
-    return;
-  }
-
-  const existing = await User.findOne({ email: email.toLowerCase() });
-  if (existing) {
-    return;
-  }
-
-  const hashed = await bcrypt.hash(password, 10);
-  await User.create({
-    name,
-    email: email.toLowerCase(),
-    role: 'superadmin',
-    password: hashed,
-  });
-
-  console.log(`Super admin created with email: ${email}`);
-}
-
-async function start() {
-  await connectDb(process.env.MONGO_URI);
-  await ensureSuperAdmin();
-
-  app.listen(PORT, () => {
-    console.log(`API listening on http://localhost:${PORT}`);
-  });
-}
-
-// centralized error handler so async errors don't crash the process
-app.use((err, _req, res, _next) => {
-  console.error('Unhandled error', err);
-  return res.status(500).json({ message: 'Internal server error' });
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-start().catch((err) => {
-  console.error('Startup failed', err);
-  process.exit(1);
-});
+app.use(errorMiddleware);
+
+export default app;

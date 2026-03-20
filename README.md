@@ -106,8 +106,8 @@ Body (JSON or multipart/form-data):
 `/api/students`
 - `GET /api/students` (pagination + search + filters)
 - `GET /api/students/search?q=`
-- `GET /api/students/class/:classId`
-- `POST /api/students` (supports `picture` upload)
+- `GET /api/students/class/:className`
+- `POST /api/students` (supports `picture` upload, stored as `profileImage`)
 - `GET /api/students/:id`
 - `PUT /api/students/:id`
 - `DELETE /api/students/:id` (soft delete)
@@ -115,34 +115,29 @@ Body (JSON or multipart/form-data):
 ### Student Schema
 Required:
 - `studentName` (String, indexed)
-- `registrationNo` (String, unique, auto-generated in format `SCH-YYYY-0001`)
-- `admissionDate` (Date)
-- `classId` (ObjectId, ref: `Class`)
-- `feeDiscountPercent` (Number, default `0`)
-- `mobileNumber` (String)
-
-Optional:
-- `picture` (String path/url)
+- `class` (String, indexed)
+- `fatherName` (String)
+- `motherName` (String)
+- `admNo` (String, unique per tenant)
 - `dateOfBirth` (Date)
 - `gender` (`Male` | `Female` | `Other`)
-- `identificationMark`
-- `bloodGroup`
-- `disease`
-- `birthFormId`
-- `caste`
-- `religion`
-- `previousSchool`
-- `previousSchoolId`
-- `additionalNotes`
-- `orphanStudent` (Boolean)
-- `oscStatus` (Boolean)
-- `totalSiblings` (Number)
-- `address` (String)
-- `familyId` (ObjectId, ref: `Family`)
 
-Nested objects:
-- `father`: `name`, `education`, `nationalId`, `mobile`, `occupation`, `profession`, `income`
-- `mother`: `name`, `education`, `nationalId`, `mobile`, `occupation`, `profession`, `income`
+Optional:
+- `aadharCardNo` (String)
+- `apaarId` (String)
+- `pen` (String)
+- `fatherOccupation` (String)
+- `fatherIncome` (Number)
+- `motherOccupation` (String)
+- `motherIncome` (Number)
+- `dateOfAdmission` (Date)
+- `caste` (String)
+- `category` (String)
+- `bloodGroup` (String)
+- `bankDetails` (String)
+- `address` (String)
+- `mobile` (String)
+- `profileImage` (String path/url)
 
 System fields:
 - `isActive` (Boolean, default `true`)
@@ -152,36 +147,72 @@ System fields:
 ```
 {
   "studentName": "Bart Simpson",
-  "classId": "<class-id>",
-  "admissionDate": "2026-01-10",
-  "mobileNumber": "+1-555-111",
-  "feeDiscountPercent": 10,
+  "class": "8",
+  "aadharCardNo": "123412341234",
+  "apaarId": "APAAR12345",
+  "pen": "PEN12345",
+  "fatherName": "Homer Simpson",
+  "fatherOccupation": "Worker",
+  "fatherIncome": 45000,
+  "motherName": "Marge Simpson",
+  "motherOccupation": "Homemaker",
+  "motherIncome": 25000,
+  "admNo": "ADM-1001",
+  "dateOfBirth": "5/7/16",
+  "dateOfAdmission": "01/4/2024",
   "gender": "Male",
+  "caste": "General",
+  "category": "GEN",
+  "bloodGroup": "O+",
+  "bankDetails": "SBI 1234567890",
   "address": "Springfield",
-  "father": {
-    "name": "Homer Simpson",
-    "mobile": "+1-555-999",
-    "occupation": "Nuclear Plant Worker",
-    "income": 4500
-  },
-  "mother": {
-    "name": "Marge Simpson",
-    "mobile": "+1-555-888",
-    "occupation": "Homemaker",
-    "income": 2000
-  },
-  "picture": "<file>"
+  "mobile": "9876543210",
+  "profileImage": "<file/url>"
 }
 ```
+
+Accepted compatibility aliases:
+- `Student Name` -> `studentName`
+- `Class` -> `class`
+- `className` -> `class`
+- `Aadhar Card No` -> `aadharCardNo`
+- `APAAR ID` -> `apaarId`
+- `PEN` -> `pen`
+- `Father Name` -> `fatherName`
+- `Mother Name` -> `motherName`
+- `Father's Occupation` -> `fatherOccupation`
+- `Mother's Occupation` -> `motherOccupation`
+- `Father's Income` -> `fatherIncome`
+- `Mother's Income` -> `motherIncome`
+- `admissionNo` or `registrationNo` -> `admNo`
+- `Adm No` -> `admNo`
+- `dob` -> `dateOfBirth`
+- `DOB` -> `dateOfBirth`
+- `Date of Admission` -> `dateOfAdmission`
+- `Gender` -> `gender`
+- `Caste` -> `caste`
+- `Category` -> `category`
+- `Blood Group` -> `bloodGroup`
+- `Bank Details` -> `bankDetails`
+- `Address` -> `address`
+- `Mobile` -> `mobile`
+- `Profile_Image` or `profile_image` -> `profileImage`
+- `father.name` -> `fatherName`
+- `mother.name` -> `motherName`
+
+Date handling:
+- accepts zero-padded and non-padded dates like `01/02/2016` and `1/2/2016`
+- accepts 2-digit years like `1/2/16` and stores them as year `2016`
+- stores normalized dates as proper `Date` values in MongoDB
 
 ### List, Search, Filter, Pagination
 `GET /api/students` query params:
 - `page` (default `1`)
 - `limit` (default `10`, max `100`)
-- `classId`
-- `q` (search on `studentName`, `registrationNo`, `mobileNumber`)
+- `class` or `className`
+- `q` (search on `studentName`, `class`, `aadharCardNo`, `apaarId`, `pen`, `fatherName`, `motherName`, `admNo`, `mobile`)
 - `includeInactive` (`true|false`, default `false`)
-- `sortBy` (`createdAt|studentName|registrationNo|admissionDate`)
+- `sortBy` (`createdAt|studentName|class|admNo|dateOfBirth|dateOfAdmission`)
 - `sortOrder` (`asc|desc`)
 
 Response shape:
@@ -374,7 +405,7 @@ Body (create/update):
 - Upload field names:
   - Users: `profileImage`
   - Teachers: `picture`
-  - Students: `picture`
+  - Students: `picture` (stored as `profileImage`)
 
 ## Health Check
 `GET /health`

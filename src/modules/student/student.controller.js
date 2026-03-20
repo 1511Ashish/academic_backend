@@ -14,7 +14,7 @@ export async function createStudentController(req, res, next) {
   try {
     const payload = { ...req.body };
     if (req.file?.buffer) {
-      payload.picture = await uploadToCloudinary(req.file.buffer, 'students');
+      payload.profileImage = await uploadToCloudinary(req.file.buffer, 'students');
     }
     const student = await createStudent(payload, req.tenantId);
     return success(res, student, 'Student created', 201);
@@ -45,7 +45,7 @@ export async function updateStudentController(req, res, next) {
   try {
     const updates = { ...req.body };
     if (req.file?.buffer) {
-      updates.picture = await uploadToCloudinary(req.file.buffer, 'students');
+      updates.profileImage = await uploadToCloudinary(req.file.buffer, 'students');
     }
     const student = await updateStudent(req.params.id, req.tenantId, updates);
     return success(res, student, 'Student updated');
@@ -65,7 +65,7 @@ export async function deleteStudentController(req, res, next) {
 
 export async function getStudentsByClassController(req, res, next) {
   try {
-    const students = await getStudentsByClass(req.params.classId, req.tenantId, req.query);
+    const students = await getStudentsByClass(req.params.className, req.tenantId, req.query);
     return success(res, students, 'Students fetched');
   } catch (err) {
     return next(err);

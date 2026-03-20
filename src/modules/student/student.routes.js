@@ -18,7 +18,7 @@ const router = Router();
 router.use(authMiddleware, tenantMiddleware);
 
 router.get('/search', searchStudentsController);
-router.get('/class/:classId', getStudentsByClassController);
+router.get('/class/:className', getStudentsByClassController);
 router.get('/', listStudentsController);
 router.post('/', roleMiddleware('schooladmin', 'teacher'), upload.single('picture'), createStudentController);
 router.get('/:id', getStudentController);

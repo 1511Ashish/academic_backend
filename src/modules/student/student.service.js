@@ -23,6 +23,7 @@ function buildListFilter(tenantId, options) {
     filter.$or = [
       { studentName: pattern },
       { class: pattern },
+      { scholarNumber: pattern },
       { aadharCardNo: pattern },
       { apaarId: pattern },
       { pen: pattern },

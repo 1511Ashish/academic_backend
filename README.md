@@ -123,6 +123,7 @@ Required:
 - `gender` (`Male` | `Female` | `Other`)
 
 Optional:
+- `scholarNumber` (String, unique per tenant when provided)
 - `aadharCardNo` (String)
 - `apaarId` (String)
 - `pen` (String)
@@ -148,6 +149,7 @@ System fields:
 {
   "studentName": "Bart Simpson",
   "class": "8",
+  "scholarNumber": "SCH-1001",
   "aadharCardNo": "123412341234",
   "apaarId": "APAAR12345",
   "pen": "PEN12345",
@@ -175,6 +177,7 @@ Accepted compatibility aliases:
 - `Student Name` -> `studentName`
 - `Class` -> `class`
 - `className` -> `class`
+- `scholarNo`, `Scholar No`, `Scholar Number` -> `scholarNumber`
 - `Aadhar Card No` -> `aadharCardNo`
 - `APAAR ID` -> `apaarId`
 - `PEN` -> `pen`
@@ -210,7 +213,7 @@ Date handling:
 - `page` (default `1`)
 - `limit` (default `10`, max `100`)
 - `class` or `className`
-- `q` (search on `studentName`, `class`, `aadharCardNo`, `apaarId`, `pen`, `fatherName`, `motherName`, `admNo`, `mobile`)
+- `q` (search on `studentName`, `class`, `scholarNumber`, `aadharCardNo`, `apaarId`, `pen`, `fatherName`, `motherName`, `admNo`, `mobile`)
 - `includeInactive` (`true|false`, default `false`)
 - `sortBy` (`createdAt|studentName|class|admNo|dateOfBirth|dateOfAdmission`)
 - `sortOrder` (`asc|desc`)
@@ -237,6 +240,189 @@ Response shape:
 ### Soft Delete Behavior
 - `DELETE /api/students/:id` sets `isActive=false`
 - Soft-deleted students are excluded from normal list/get queries unless `includeInactive=true` on list
+
+## Student Marksheets
+`/api/students/marksheets`
+- `POST /api/students/marksheets/import` (multipart/form-data, Excel or CSV)
+- `GET /api/students/marksheets`
+
+### Import Marksheet Excel
+`POST /api/students/marksheets/import`
+
+Headers:
+- authenticated tenant token required
+
+Body (`multipart/form-data`):
+- `file`: `.xlsx`, `.xls`, or `.csv`
+- `examName`: optional override for all rows
+- `academicYear`: optional override for all rows
+- `term`: optional override for all rows
+
+Supported student matching priority per row:
+1. `scholarNumber` / `Scholar No`
+2. `admNo` / `Adm No` / `Admission No`
+3. `studentName` + `class`
+
+Supported identity columns in Excel:
+- `Scholar No`, `Scholar Number`, `scholarNo`, `scholarNumber`
+- `Adm No`, `Admission No`, `admissionNo`, `admNo`, `registrationNo`
+- `Student Name`, `Name`, `studentName`
+- `Class`, `class`, `className`
+- `Exam`, `Exam Name`, `examName`
+- `Academic Year`, `Session`, `academicYear`
+- `Term`, `term`
+- `Result`, `Percentage`, `Obtained Marks`, `Max Marks`
+
+Subject column handling:
+- Any non-reserved column is treated as a subject marks column.
+- `English`, `Maths`, `Science` -> stored as `marksObtained`
+- `English Max`, `Maths Max Marks` -> stored as `maxMarks`
+- `English Grade` -> stored as `grade`
+- `English Remarks` -> stored as `remarks`
+
+Import behavior:
+- Validates that each uploaded row maps to exactly one active student in the same tenant.
+- Rejects duplicate student rows inside the same uploaded file.
+- Uses upsert on `tenantId + studentId + examName + academicYear + term`.
+- Returns `created` vs `updated` status for each imported marksheet.
+- Stores a student snapshot with:
+  - `name`
+  - `fatherName`
+  - `motherName`
+  - `dob`
+  - `pen`
+  - `apaarId`
+  - `class`
+  - `scholarNumber`
+  - `admNo`
+
+### Multi-sheet Format (sample-marks.xlsx)
+If the Excel file contains the following sheets, the backend expects this exact format and will import accordingly:
+
+Sheet: `Students`
+- Columns:
+  - `studentId`
+  - `scholarNo`
+  - `rollNo`
+  - `name`
+  - `dob`
+  - `father`
+  - `mother`
+  - `classSection`
+  - `schoolName`
+  - `udise`
+  - `session`
+  - `rank`
+  - `attendance`
+  - `result`
+  - `remarks`
+
+Sheet: `Scholastic`
+- Columns:
+  - `studentId`
+  - `subject`
+  - `t1`
+  - `t2`
+  - `or1`
+  - `pw1`
+  - `hy`
+  - `t3`
+  - `t4`
+  - `or2`
+  - `pw2`
+  - `an`
+
+Sheet: `OtherSubjects`
+- Columns:
+  - `studentId`
+  - `name`
+  - `sem1`
+  - `sem2`
+
+Sheet: `CoScholastic`
+- Columns:
+  - `studentId`
+  - `name`
+  - `grade`
+  - `semester`
+
+Import behavior for this format:
+- Students are matched by `scholarNo`, `admNo`, or `name + classSection`.
+- `studentId` is used only to join rows across sheets.
+- Scholastic scores are stored per subject in `scholastic[]` with a `scores` object.
+- `OtherSubjects` and `CoScholastic` are stored in `otherSubjects[]` and `coScholastic[]`.
+
+Example response:
+```json
+{
+  "success": true,
+  "message": "Marksheets imported",
+  "data": {
+    "summary": {
+      "totalRows": 2,
+      "importedCount": 1,
+      "createdCount": 1,
+      "updatedCount": 0,
+      "failedCount": 1
+    },
+    "failures": [
+      {
+        "rowNumber": 3,
+        "reason": "Student not found",
+        "scholarNumber": "SCH-9999"
+      }
+    ],
+    "items": [
+      {
+        "id": "67aa00000000000000000001",
+        "status": "created",
+        "examName": "Quarterly",
+        "academicYear": "2025-2026",
+        "term": "Term 1",
+        "student": {
+          "name": "Bart Simpson",
+          "fatherName": "Homer Simpson",
+          "motherName": "Marge Simpson",
+          "dob": "2016-07-05T00:00:00.000Z",
+          "pen": "PEN12345",
+          "apaarId": "APAAR12345",
+          "class": "8",
+          "scholarNumber": "SCH-1001",
+          "admNo": "ADM-1001"
+        },
+        "subjects": [
+          {
+            "subject": "English",
+            "marksObtained": 78,
+            "maxMarks": 100,
+            "grade": "B+",
+            "remarks": "Good"
+          }
+        ],
+        "totals": {
+          "obtainedMarks": 420,
+          "maxMarks": 500,
+          "percentage": 84,
+          "result": "Pass"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Fetch Stored Marksheets
+`GET /api/students/marksheets` query params:
+- `studentId`
+- `scholarNumber`
+- `admNo`
+- `examName`
+- `academicYear`
+- `term`
+
+Response:
+- Returns stored marksheets in descending `updatedAt` order.
+- Each item includes student snapshot, subject-wise marks, and totals for direct UI rendering.
 
 ## Teachers
 `/api/teachers`

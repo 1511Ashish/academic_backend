@@ -138,6 +138,10 @@ export function validateStudentId(studentId) {
 export function validateCreateStudentPayload(payload) {
   const studentName = ensureString(getField(payload, 'studentName', 'Student Name'), 'studentName');
   const studentClass = ensureString(getField(payload, 'class', 'className', 'Class'), 'class');
+  const scholarNumber = ensureString(
+    getField(payload, 'scholarNumber', 'scholarNo', 'Scholar No', 'Scholar Number'),
+    'scholarNumber'
+  );
   const aadharCardNo = ensureString(getField(payload, 'aadharCardNo', 'aadhaarCardNo', 'Aadhar Card No'), 'aadharCardNo');
   const apaarId = ensureString(getField(payload, 'apaarId', 'APAAR ID'), 'apaarId');
   const pen = ensureString(getField(payload, 'pen', 'PEN'), 'pen');
@@ -161,6 +165,7 @@ export function validateCreateStudentPayload(payload) {
   const normalized = normalizeStudentPayload(payload);
   normalized.studentName = studentName;
   normalized.class = studentClass;
+  normalized.scholarNumber = scholarNumber;
   normalized.aadharCardNo = aadharCardNo;
   normalized.apaarId = apaarId;
   normalized.pen = pen;
@@ -191,6 +196,7 @@ function normalizeStudentPayload(payload) {
   const stringFields = [
     'studentName',
     'class',
+    'scholarNumber',
     'aadharCardNo',
     'apaarId',
     'pen',
@@ -225,6 +231,13 @@ function normalizeStudentPayload(payload) {
     (Object.prototype.hasOwnProperty.call(payload, 'className') || Object.prototype.hasOwnProperty.call(payload, 'Class'))
   ) {
     normalized.class = ensureString(getField(payload, 'className', 'Class'), 'class');
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(normalized, 'scholarNumber')) {
+    const scholarNumber = getField(payload, 'scholarNo', 'Scholar No', 'Scholar Number');
+    if (scholarNumber !== undefined) {
+      normalized.scholarNumber = ensureString(scholarNumber, 'scholarNumber');
+    }
   }
 
   if (!Object.prototype.hasOwnProperty.call(normalized, 'aadharCardNo')) {

@@ -4,6 +4,7 @@ import { applyBaseSchema } from '../../core/base.model.js';
 const studentSchema = new mongoose.Schema({
   studentName: { type: String, required: true, trim: true, index: true },
   class: { type: String, required: true, trim: true, index: true },
+  scholarNumber: { type: String, trim: true, index: true },
   aadharCardNo: { type: String, trim: true, index: true },
   apaarId: { type: String, trim: true, index: true },
   pen: { type: String, trim: true, index: true },
@@ -29,6 +30,10 @@ const studentSchema = new mongoose.Schema({
 
 studentSchema.index({ tenantId: 1, class: 1, isActive: 1 });
 studentSchema.index({ tenantId: 1, admNo: 1 }, { unique: true });
+studentSchema.index(
+  { tenantId: 1, scholarNumber: 1 },
+  { unique: true, partialFilterExpression: { scholarNumber: { $type: 'string' } } }
+);
 studentSchema.index({ tenantId: 1, studentName: 1 });
 
 applyBaseSchema(studentSchema);

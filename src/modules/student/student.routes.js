@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
 import { tenantMiddleware } from '../../core/tenant.middleware.js';
 import { roleMiddleware } from '../../middleware/role.middleware.js';
-import { upload } from '../../middleware/upload.middleware.js';
+import { excelUpload, upload } from '../../middleware/upload.middleware.js';
 import {
   createStudentController,
   listStudentsController,
@@ -12,11 +12,22 @@ import {
   getStudentsByClassController,
   searchStudentsController,
 } from './student.controller.js';
+import {
+  getStudentMarksheetsController,
+  importStudentMarksheetsController,
+} from './marksheet.controller.js';
 
 const router = Router();
 
 router.use(authMiddleware, tenantMiddleware);
 
+router.get('/marksheets', getStudentMarksheetsController);
+router.post(
+  '/marksheets/import',
+  roleMiddleware('schooladmin', 'teacher'),
+  excelUpload.single('file'),
+  importStudentMarksheetsController
+);
 router.get('/search', searchStudentsController);
 router.get('/class/:className', getStudentsByClassController);
 router.get('/', listStudentsController);

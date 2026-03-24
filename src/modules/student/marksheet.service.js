@@ -68,9 +68,13 @@ function cleanString(value) {
   return normalized === '' ? undefined : normalized;
 }
 
-function normalizeName(value) {
+function normalizeIdentifier(value) {
   const normalized = cleanString(value);
-  return normalized ? normalized.toLowerCase() : undefined;
+  return normalized ? normalized.toLowerCase().replace(/\s+/g, ' ').trim() : undefined;
+}
+
+function normalizeName(value) {
+  return normalizeIdentifier(value);
 }
 
 function numberOrUndefined(value) {
@@ -90,10 +94,22 @@ function getRowValue(row, aliases) {
 
 function getStudentIdentity(row) {
   return {
-    scholarNumber: cleanString(getRowValue(row, ['Scholar No', 'Scholar Number', 'scholarNo', 'scholarNumber'])),
-    admNo: cleanString(getRowValue(row, ['Adm No', 'Admission No', 'admissionNo', 'admNo', 'registrationNo'])),
-    studentName: cleanString(getRowValue(row, ['Student Name', 'Name', 'studentName', 'name'])),
-    className: cleanString(getRowValue(row, ['Class', 'className', 'class'])),
+    scholarNumber: cleanString(
+      getRowValue(row, ['Scholar No', 'Scholar Number', 'scholarNo', 'scholarNumber', 'scholar no', 'scholar number'])
+    ),
+    admNo: cleanString(
+      getRowValue(row, [
+        'Adm No',
+        'Admission No',
+        'Admission Number',
+        'admissionNo',
+        'admNo',
+        'registrationNo',
+        'admission number',
+      ])
+    ),
+    studentName: cleanString(getRowValue(row, ['Student Name', 'Name', 'studentName', 'name', 'student'])),
+    className: cleanString(getRowValue(row, ['Class', 'className', 'class', 'Class Section', 'classSection'])),
     examName: cleanString(getRowValue(row, ['Exam', 'Exam Name', 'examName', 'exam'])),
     academicYear: cleanString(getRowValue(row, ['Academic Year', 'Session', 'academicYear', 'session'])),
     term: cleanString(getRowValue(row, ['Term', 'term'])),
@@ -107,10 +123,14 @@ function getStudentIdentity(row) {
 function getStudentIdentityFromSheetRow(row) {
   return {
     studentId: cleanString(getRowValue(row, ['studentId', 'studentID'])),
-    scholarNumber: cleanString(getRowValue(row, ['scholarNo', 'scholarNumber', 'Scholar No'])),
-    admNo: cleanString(getRowValue(row, ['admNo', 'admissionNo', 'Adm No'])),
-    studentName: cleanString(getRowValue(row, ['name', 'studentName', 'Student Name'])),
-    className: cleanString(getRowValue(row, ['classSection', 'class', 'className', 'Class'])),
+    scholarNumber: cleanString(
+      getRowValue(row, ['scholarNo', 'scholarNumber', 'Scholar No', 'Scholar Number', 'scholar number'])
+    ),
+    admNo: cleanString(getRowValue(row, ['admNo', 'admissionNo', 'Adm No', 'Admission No', 'Admission Number'])),
+    studentName: cleanString(getRowValue(row, ['name', 'studentName', 'Student Name', 'student'])),
+    className: cleanString(
+      getRowValue(row, ['classSection', 'Class Section', 'class', 'className', 'Class'])
+    ),
     dob: cleanString(getRowValue(row, ['dob', 'dateOfBirth', 'DOB'])),
     father: cleanString(getRowValue(row, ['father', 'fatherName'])),
     mother: cleanString(getRowValue(row, ['mother', 'motherName'])),
@@ -218,18 +238,27 @@ function buildStudentMaps(students) {
   const byScholar = new Map();
   const byAdmNo = new Map();
   const byNameClass = new Map();
+  const byName = new Map();
 
   for (const student of students) {
-    const scholarNumber = cleanString(student.scholarNumber);
-    const admNo = cleanString(student.admNo);
+    const scholarNumber = normalizeIdentifier(student.scholarNumber);
+    const admNo = normalizeIdentifier(student.admNo);
+    const nameKey = normalizeName(student.studentName);
     const nameClassKey = `${normalizeName(student.studentName)}::${normalizeName(student.class)}`;
 
     if (scholarNumber) {
-      byScholar.set(scholarNumber.toLowerCase(), student);
+      byScholar.set(scholarNumber, student);
     }
 
     if (admNo) {
-      byAdmNo.set(admNo.toLowerCase(), student);
+      byAdmNo.set(admNo, student);
+    }
+
+    if (nameKey) {
+      if (!byName.has(nameKey)) {
+        byName.set(nameKey, []);
+      }
+      byName.get(nameKey).push(student);
     }
 
     if (!byNameClass.has(nameClassKey)) {
@@ -238,23 +267,36 @@ function buildStudentMaps(students) {
     byNameClass.get(nameClassKey).push(student);
   }
 
-  return { byScholar, byAdmNo, byNameClass };
+  return { byScholar, byAdmNo, byNameClass, byName };
 }
 
 function matchStudent(identity, maps) {
   const matches = [];
 
-  if (identity.scholarNumber) {
-    const student = maps.byScholar.get(identity.scholarNumber.toLowerCase());
+  const scholarNumber = normalizeIdentifier(identity.scholarNumber);
+  const admNo = normalizeIdentifier(identity.admNo);
+
+  if (scholarNumber) {
+    const student = maps.byScholar.get(scholarNumber);
     if (student) {
       matches.push({ type: 'scholarNumber', student });
     }
+
+    const admStudent = maps.byAdmNo.get(scholarNumber);
+    if (admStudent) {
+      matches.push({ type: 'scholarNumber->admNo', student: admStudent });
+    }
   }
 
-  if (identity.admNo) {
-    const student = maps.byAdmNo.get(identity.admNo.toLowerCase());
+  if (admNo) {
+    const student = maps.byAdmNo.get(admNo);
     if (student) {
       matches.push({ type: 'admNo', student });
+    }
+
+    const scholarStudent = maps.byScholar.get(admNo);
+    if (scholarStudent) {
+      matches.push({ type: 'admNo->scholarNumber', student: scholarStudent });
     }
   }
 
@@ -263,6 +305,11 @@ function matchStudent(identity, maps) {
     const students = maps.byNameClass.get(key) ?? [];
     for (const student of students) {
       matches.push({ type: 'name+class', student });
+    }
+  } else if (identity.studentName) {
+    const students = maps.byName.get(normalizeName(identity.studentName)) ?? [];
+    if (students.length === 1) {
+      matches.push({ type: 'name', student: students[0] });
     }
   }
 
@@ -347,6 +394,50 @@ function buildMarksheetResponse(doc) {
 
 function buildMarksheetKey({ studentId, examName, academicYear, term }) {
   return `${String(studentId)}::${examName}::${academicYear}::${term}`;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildCaseInsensitiveExactClauses(field, values) {
+  return [...new Set(values.map((value) => cleanString(value)).filter(Boolean))].map((value) => ({
+    [field]: new RegExp(`^\\s*${escapeRegExp(value)}\\s*$`, 'i'),
+  }));
+}
+
+function buildStudentLookupFilter({ tenantId, identities, emptyMessage }) {
+  const scholarNumbers = identities.map((item) => item.identity.scholarNumber);
+  const admissionNumbers = identities.map((item) => item.identity.admNo);
+  const studentNames = identities.map((item) => item.identity.studentName);
+  const studentPairs = identities
+    .map((item) => ({
+      studentName: cleanString(item.identity.studentName),
+      className: cleanString(item.identity.className),
+    }))
+    .filter((item) => item.studentName && item.className);
+
+  const orClauses = [
+    ...buildCaseInsensitiveExactClauses('scholarNumber', scholarNumbers),
+    ...buildCaseInsensitiveExactClauses('admNo', scholarNumbers),
+    ...buildCaseInsensitiveExactClauses('admNo', admissionNumbers),
+    ...buildCaseInsensitiveExactClauses('scholarNumber', admissionNumbers),
+    ...buildCaseInsensitiveExactClauses('studentName', studentNames),
+    ...studentPairs.map((item) => ({
+      studentName: new RegExp(`^\\s*${escapeRegExp(item.studentName)}\\s*$`, 'i'),
+      class: new RegExp(`^\\s*${escapeRegExp(item.className)}\\s*$`, 'i'),
+    })),
+  ];
+
+  if (orClauses.length === 0) {
+    throw new ApiError(400, emptyMessage);
+  }
+
+  return {
+    tenantId,
+    isActive: true,
+    $or: orClauses,
+  };
 }
 
 function computeTotals(subjects, identity) {
@@ -493,26 +584,11 @@ async function importMultiSheet({ workbook, body, tenantId }) {
     row,
   }));
 
-  const scholarNumbers = [...new Set(identities.map((item) => item.identity.scholarNumber).filter(Boolean))];
-  const admissionNumbers = [...new Set(identities.map((item) => item.identity.admNo).filter(Boolean))];
-  const studentNames = [...new Set(identities.map((item) => item.identity.studentName).filter(Boolean))];
-  const classNames = [...new Set(identities.map((item) => item.identity.className).filter(Boolean))];
-
-  const lookupFilter = {
+  const lookupFilter = buildStudentLookupFilter({
     tenantId,
-    isActive: true,
-    $or: [
-      scholarNumbers.length > 0 ? { scholarNumber: { $in: scholarNumbers } } : null,
-      admissionNumbers.length > 0 ? { admNo: { $in: admissionNumbers } } : null,
-      studentNames.length > 0 && classNames.length > 0
-        ? { studentName: { $in: studentNames }, class: { $in: classNames } }
-        : null,
-    ].filter(Boolean),
-  };
-
-  if (lookupFilter.$or.length === 0) {
-    throw new ApiError(400, 'Students sheet must contain scholar number, admission number, or student name with class');
-  }
+    identities,
+    emptyMessage: 'Students sheet must contain scholar number, admission number, or student name with class',
+  });
 
   const students = await Student.find(lookupFilter).select(
     '_id studentName fatherName motherName dateOfBirth pen apaarId class scholarNumber admNo'
@@ -635,7 +711,12 @@ async function importMultiSheet({ workbook, body, tenantId }) {
   const existingKeys = new Set(existingDocs.map((doc) => buildMarksheetKey(doc)));
 
   if (operations.length > 0) {
-    await StudentMarksheet.bulkWrite(operations.map((entry) => entry.updateOne), { ordered: false });
+    await StudentMarksheet.bulkWrite(
+      operations.map((entry) => ({
+        updateOne: entry.updateOne,
+      })),
+      { ordered: false }
+    );
   }
 
   const importedKeys = operations.map((entry) => ({
@@ -707,26 +788,11 @@ export async function importStudentMarksheets({ file, body, tenantId }) {
     };
   });
 
-  const scholarNumbers = [...new Set(identities.map((item) => item.identity.scholarNumber).filter(Boolean))];
-  const admissionNumbers = [...new Set(identities.map((item) => item.identity.admNo).filter(Boolean))];
-  const studentNames = [...new Set(identities.map((item) => item.identity.studentName).filter(Boolean))];
-  const classNames = [...new Set(identities.map((item) => item.identity.className).filter(Boolean))];
-
-  const lookupFilter = {
+  const lookupFilter = buildStudentLookupFilter({
     tenantId,
-    isActive: true,
-    $or: [
-      scholarNumbers.length > 0 ? { scholarNumber: { $in: scholarNumbers } } : null,
-      admissionNumbers.length > 0 ? { admNo: { $in: admissionNumbers } } : null,
-      studentNames.length > 0 && classNames.length > 0
-        ? { studentName: { $in: studentNames }, class: { $in: classNames } }
-        : null,
-    ].filter(Boolean),
-  };
-
-  if (lookupFilter.$or.length === 0) {
-    throw new ApiError(400, 'Each row must contain scholar number, admission number, or student name with class');
-  }
+    identities,
+    emptyMessage: 'Each row must contain scholar number, admission number, or student name with class',
+  });
 
   const students = await Student.find(lookupFilter).select(
     '_id studentName fatherName motherName dateOfBirth pen apaarId class scholarNumber admNo'
@@ -832,7 +898,12 @@ export async function importStudentMarksheets({ file, body, tenantId }) {
   const existingKeys = new Set(existingDocs.map((doc) => buildMarksheetKey(doc)));
 
   if (operations.length > 0) {
-    await StudentMarksheet.bulkWrite(operations.map((entry) => entry.updateOne), { ordered: false });
+    await StudentMarksheet.bulkWrite(
+      operations.map((entry) => ({
+        updateOne: entry.updateOne,
+      })),
+      { ordered: false }
+    );
   }
 
   const importedKeys = operations.map((entry) => ({

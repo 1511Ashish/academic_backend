@@ -64,16 +64,10 @@ export function validateUpdateClassPayload(payload = {}) {
 }
 
 export function validateClassQuery(query = {}) {
-  const page = Number(query.page ?? 1);
-  const limit = Number(query.limit ?? 10);
-
-  if (!Number.isInteger(page) || page < 1) {
-    throw new ApiError(400, 'page must be a positive integer');
-  }
-
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    throw new ApiError(400, 'limit must be an integer between 1 and 100');
-  }
+  const parsedPage = Number(query.page ?? 1);
+  const parsedLimit = Number(query.limit ?? 10);
+  const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : 10;
 
   const sortBySet = new Set(['createdAt', 'className', 'academicYear', 'monthlyTuitionFee']);
   const sortOrderSet = new Set(['asc', 'desc']);

@@ -514,7 +514,7 @@ Professional/System fields:
 
 ## Classes
 `/api/classes`
-- `GET /api/classes` (pagination + search + filter)
+- `GET /api/classes` (student-derived class-wise structure, no pagination)
 - `POST /api/classes`
 - `GET /api/classes/teacher/:teacherId`
 - `GET /api/classes/:id`
@@ -550,17 +550,21 @@ System fields:
 }
 ```
 
-### Class List/Search/Filter/Pagination
+### Class List/Search/Filter
 `GET /api/classes` query params:
-- `page` (default `1`)
-- `limit` (default `10`, max `100`)
 - `q` (search by `className`)
 - `academicYear`
 - `includeInactive` (`true|false`, default `false`)
 - `sortBy` (`createdAt|className|academicYear|monthlyTuitionFee`)
 - `sortOrder` (`asc|desc`)
 
-Teacher data is populated on class fetch APIs:
+`GET /api/classes` now groups active students by their `class` field. Each returned class contains:
+- `className`
+- `studentCount`
+- `students` (full student objects, no pagination limit)
+- class metadata from the class collection when a matching `className` exists
+
+Teacher data is populated when class metadata exists:
 - `.populate("classTeacher", "employeeName employeeId mobileNumber")`
 
 ### Class Soft Delete Behavior

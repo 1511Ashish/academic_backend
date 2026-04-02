@@ -346,11 +346,14 @@ function buildStudentSnapshot(student) {
 }
 
 function buildMarksheetResponse(doc) {
+  const className = doc.studentSnapshot.className || doc.identifiers?.className || doc.meta?.classSection;
+
   return {
     id: doc._id,
     examName: doc.examName,
     academicYear: doc.academicYear,
     term: doc.term,
+    className,
     student: {
       name: doc.studentSnapshot.studentName,
       fatherName: doc.studentSnapshot.fatherName,
@@ -358,7 +361,7 @@ function buildMarksheetResponse(doc) {
       dob: doc.studentSnapshot.dateOfBirth,
       pen: doc.studentSnapshot.pen,
       apaarId: doc.studentSnapshot.apaarId,
-      class: doc.studentSnapshot.className,
+      class: className,
       scholarNumber: doc.studentSnapshot.scholarNumber,
       admNo: doc.studentSnapshot.admNo,
     },
@@ -949,12 +952,22 @@ export async function getStudentMarksheets(tenantId, query = {}) {
   const scholarNumber = cleanString(query.scholarNumber);
   const admNo = cleanString(query.admNo);
   const studentId = cleanString(query.studentId);
+  const className = cleanString(query.class ?? query.className ?? query.classSection);
   const examName = cleanString(query.examName);
   const academicYear = cleanString(query.academicYear);
   const term = cleanString(query.term);
 
   if (studentId) {
     filter.studentId = studentId;
+  }
+
+  if (className) {
+    const classPattern = new RegExp(`^\\s*${escapeRegExp(className)}\\s*$`, 'i');
+    filter.$or = [
+      { 'studentSnapshot.className': classPattern },
+      { 'identifiers.className': classPattern },
+      { 'meta.classSection': classPattern },
+    ];
   }
 
   if (scholarNumber) {

@@ -404,6 +404,12 @@ Example response:
           "maxMarks": 500,
           "percentage": 84,
           "result": "Pass"
+        },
+        "ranking": {
+          "rank": 3,
+          "totalStudents": 42,
+          "rankedStudents": 42,
+          "percentage": 84
         }
       }
     ]
@@ -422,7 +428,9 @@ Example response:
 
 Response:
 - Returns stored marksheets in descending `updatedAt` order.
-- Each item includes student snapshot, subject-wise marks, and totals for direct UI rendering.
+- Each item includes student snapshot, subject-wise marks, totals, and `ranking`.
+- `ranking` is calculated by `totals.percentage` within the same `class + examName + academicYear + term`.
+- `totalStudents` is the total students in that class group, and `rank` is ready for direct frontend display.
 
 ## Teachers
 `/api/teachers`

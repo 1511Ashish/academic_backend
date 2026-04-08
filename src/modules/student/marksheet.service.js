@@ -345,8 +345,151 @@ function buildStudentSnapshot(student) {
   };
 }
 
-function buildMarksheetResponse(doc) {
-  const className = doc.studentSnapshot.className || doc.identifiers?.className || doc.meta?.classSection;
+function getMarksheetClassName(doc) {
+  return doc.studentSnapshot.className || doc.identifiers?.className || doc.meta?.classSection;
+}
+
+function getMarksheetRankingGroupKey(doc) {
+  return [
+    cleanString(getMarksheetClassName(doc)) || '',
+    cleanString(doc.examName) || '',
+    cleanString(doc.academicYear) || '',
+    cleanString(doc.term) || '',
+  ].join('::');
+}
+
+function getMarksheetPercentage(doc) {
+  return typeof doc?.totals?.percentage === 'number' ? doc.totals.percentage : undefined;
+}
+
+function buildRankingMap(docs) {
+  const grouped = new Map();
+
+  for (const doc of docs) {
+    const groupKey = getMarksheetRankingGroupKey(doc);
+    if (!grouped.has(groupKey)) {
+      grouped.set(groupKey, []);
+    }
+
+    grouped.get(groupKey).push(doc);
+  }
+
+  const rankingMap = new Map();
+
+  for (const [groupKey, groupDocs] of grouped.entries()) {
+    const rankedDocs = groupDocs
+      .filter((doc) => getMarksheetPercentage(doc) !== undefined)
+      .sort((left, right) => {
+        const percentageDiff = getMarksheetPercentage(right) - getMarksheetPercentage(left);
+        if (percentageDiff !== 0) return percentageDiff;
+
+        const obtainedDiff = (right?.totals?.obtainedMarks ?? 0) - (left?.totals?.obtainedMarks ?? 0);
+        if (obtainedDiff !== 0) return obtainedDiff;
+
+        return String(left._id).localeCompare(String(right._id));
+      });
+
+    let currentRank = 0;
+    let previousPercentage;
+    let previousObtainedMarks;
+
+    for (let index = 0; index < rankedDocs.length; index += 1) {
+      const doc = rankedDocs[index];
+      const percentage = getMarksheetPercentage(doc);
+      const obtainedMarks = doc?.totals?.obtainedMarks ?? 0;
+
+      if (percentage !== previousPercentage || obtainedMarks !== previousObtainedMarks) {
+        currentRank = index + 1;
+        previousPercentage = percentage;
+        previousObtainedMarks = obtainedMarks;
+      }
+
+      rankingMap.set(String(doc._id), {
+        rank: currentRank,
+        totalStudents: groupDocs.length,
+        rankedStudents: rankedDocs.length,
+        percentage,
+      });
+    }
+
+    for (const doc of groupDocs) {
+      if (rankingMap.has(String(doc._id))) {
+        continue;
+      }
+
+      rankingMap.set(String(doc._id), {
+        rank: null,
+        totalStudents: groupDocs.length,
+        rankedStudents: rankedDocs.length,
+        percentage: getMarksheetPercentage(doc),
+      });
+    }
+  }
+
+  return rankingMap;
+}
+
+function buildGroupMatchClause(tenantId, doc) {
+  const className = cleanString(getMarksheetClassName(doc));
+  if (!className) {
+    return null;
+  }
+
+  const classPattern = new RegExp(`^\\s*${escapeRegExp(className)}\\s*$`, 'i');
+
+  return {
+    tenantId,
+    examName: doc.examName,
+    academicYear: doc.academicYear,
+    term: doc.term,
+    $or: [
+      { 'studentSnapshot.className': classPattern },
+      { 'identifiers.className': classPattern },
+      { 'meta.classSection': classPattern },
+    ],
+  };
+}
+
+async function fetchRankingScopeDocs(tenantId, docs) {
+  const clauses = [];
+  const seen = new Set();
+
+  for (const doc of docs) {
+    const clause = buildGroupMatchClause(tenantId, doc);
+    if (!clause) {
+      continue;
+    }
+
+    const key = JSON.stringify({
+      className: cleanString(getMarksheetClassName(doc)) || '',
+      examName: cleanString(doc.examName) || '',
+      academicYear: cleanString(doc.academicYear) || '',
+      term: cleanString(doc.term) || '',
+    });
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    clauses.push(clause);
+  }
+
+  if (!clauses.length) {
+    return docs;
+  }
+
+  return StudentMarksheet.find({ tenantId, $or: clauses });
+}
+
+async function attachRankingToMarksheetResponses(tenantId, docs, extraById = new Map()) {
+  const rankingScopeDocs = await fetchRankingScopeDocs(tenantId, docs);
+  const rankingMap = buildRankingMap(rankingScopeDocs);
+  return docs.map((doc) => buildMarksheetResponse(doc, rankingMap.get(String(doc._id)), extraById.get(String(doc._id))));
+}
+
+function buildMarksheetResponse(doc, ranking, extra = {}) {
+  const className = getMarksheetClassName(doc);
 
   return {
     id: doc._id,
@@ -390,8 +533,15 @@ function buildMarksheetResponse(doc) {
       semester: subject.semester,
     })),
     totals: doc.totals,
+    ranking: {
+      rank: ranking?.rank ?? null,
+      totalStudents: ranking?.totalStudents ?? 0,
+      rankedStudents: ranking?.rankedStudents ?? 0,
+      percentage: ranking?.percentage ?? doc.totals?.percentage,
+    },
     meta: doc.meta,
     updatedAt: doc.updatedAt,
+    ...extra,
   };
 }
 
@@ -749,10 +899,16 @@ async function importMultiSheet({ workbook, body, tenantId }) {
       failedCount: failures.length,
     },
     failures,
-    items: importedDocs.map((doc) => ({
-      ...buildMarksheetResponse(doc),
-      status: statuses.get(buildMarksheetKey(doc)) ?? 'created',
-    })),
+    items: await attachRankingToMarksheetResponses(
+      tenantId,
+      importedDocs,
+      new Map(
+        importedDocs.map((doc) => [
+          String(doc._id),
+          { status: statuses.get(buildMarksheetKey(doc)) ?? 'created' },
+        ])
+      )
+    ),
   };
 }
 
@@ -936,10 +1092,16 @@ export async function importStudentMarksheets({ file, body, tenantId }) {
       failedCount: failures.length,
     },
     failures,
-    items: importedDocs.map((doc) => ({
-      ...buildMarksheetResponse(doc),
-      status: statuses.get(buildMarksheetKey(doc)) ?? 'created',
-    })),
+    items: await attachRankingToMarksheetResponses(
+      tenantId,
+      importedDocs,
+      new Map(
+        importedDocs.map((doc) => [
+          String(doc._id),
+          { status: statuses.get(buildMarksheetKey(doc)) ?? 'created' },
+        ])
+      )
+    ),
   };
 }
 
@@ -991,5 +1153,5 @@ export async function getStudentMarksheets(tenantId, query = {}) {
   }
 
   const docs = await StudentMarksheet.find(filter).sort({ updatedAt: -1 });
-  return docs.map(buildMarksheetResponse);
+  return attachRankingToMarksheetResponses(tenantId, docs);
 }
